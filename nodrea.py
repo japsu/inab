@@ -36,7 +36,7 @@ class CreditCardTransaction(BaseModel):
                     case State.DATE_OR_DESCRIPTION:
                         if date_str := match.group("date"):
                             # there may be 1 to 3 dates, the last of which is the interesting one
-                            date_ = datetime.strptime(match.group("date"), "%d.%m.%Y").date()
+                            date_ = datetime.strptime(date_str, "%d.%m.%Y").date()
                         elif type_str := match.group("type"):
                             type = TransactionType(type_str)
                             description = match.group("description")
