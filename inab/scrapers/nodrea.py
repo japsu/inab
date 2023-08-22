@@ -14,6 +14,8 @@ class TransactionType(str, Enum):
 
 class State(str, Enum):
     DATE_OR_DESCRIPTION = r"^((?P<date>\d{1,2}\.\d{1,2}\.\d{4})|(?P<type>Osto|Suoritus|Hyvitys) (?P<description>.+))$"
+
+    # note the minus here is a funky Unicode character, not - or –
     SUM = r"^(?P<minus>−)?(?P<euros>\d+),(?P<cents>\d{2})$"
 
 
