@@ -1,8 +1,11 @@
 from enum import Enum
-from typing import Optional
-from datetime import datetime
+from typing import Optional, Self
+from datetime import datetime, date, timedelta, time
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from tabulate import tabulate
+
+from ..utils.format_money import format_money
 
 
 class Freq(Enum):
@@ -15,32 +18,58 @@ class Recurrence(BaseModel):
     interval: int = 1
     dtstart: Optional[datetime] = None
 
-    def as_rrule(self):
+    def get_occurrences(self, t: Optional[date] = None, until: Optional[date] = None):
         from dateutil.rrule import rrule, MONTHLY
 
-        # TODO
         assert self.freq == Freq.MONTHLY
 
-        return rrule(
-            freq=MONTHLY,
-            interval=self.interval,
-            dtstart=self.dtstart,
-            bymonthday=self.bymonthday,
-        )
+        if t is None:
+            t = date.today()
+
+        if until is None:
+            until = t + timedelta(days=120)
+
+        return [
+            dt.date()
+            for dt in rrule(
+                freq=MONTHLY,
+                interval=self.interval,
+                dtstart=self.dtstart,
+                bymonthday=self.bymonthday,
+                until=datetime.combine(until, time(0)),
+            )
+            if dt.date() >= t and dt.date() <= until
+        ]
 
 
 class RecurringTransaction(BaseModel):
     cents: int
     description: str
     other_party: str
-    recurrence: Recurrence
+    recurrence: Recurrence = Field(repr=False)
 
+    @classmethod
+    def get_occurrences(
+        cls, transactions: list[Self], t: Optional[date] = None, until: Optional[date] = None
+    ):
+        return sorted(
+            (
+                (recurrence, txn)
+                for txn in transactions
+                for recurrence in txn.recurrence.get_occurrences(t, until)
+            ),
+            key=lambda x: x[0],
+        )
 
-if __name__ == "__main__":
-    import yaml
-
-    with open("data/recurring.yaml") as f:
-        data = yaml.safe_load(f)
-
-    for txn in [RecurringTransaction.model_validate(recurrence) for recurrence in data]:
-        print(txn)
+    @classmethod
+    def cum_balance(
+        cls,
+        transactions: list[Self],
+        starting_cents: int = 0,
+        t: Optional[date] = None,
+        until: Optional[date] = None,
+    ):
+        total = starting_cents
+        for txn_date, txn in cls.get_occurrences(transactions, t, until):
+            total += txn.cents
+            yield txn_date, total, txn
