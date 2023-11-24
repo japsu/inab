@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from enum import Enum
 from typing import Optional, Self
 from datetime import datetime, date, timedelta, time
@@ -6,6 +7,7 @@ from pydantic import BaseModel, Field
 from tabulate import tabulate
 
 from ..utils.format_money import format_money
+from .actual import ScheduledTransaction
 
 
 class Freq(Enum):
@@ -54,9 +56,9 @@ class RecurringTransaction(BaseModel):
     ):
         return sorted(
             (
-                (recurrence, txn)
+                (txn_date, txn)
                 for txn in transactions
-                for recurrence in txn.recurrence.get_occurrences(t, until)
+                for txn_date in txn.recurrence.get_occurrences(t, until)
             ),
             key=lambda x: x[0],
         )
@@ -64,12 +66,66 @@ class RecurringTransaction(BaseModel):
     @classmethod
     def cum_balance(
         cls,
-        transactions: list[Self],
+        recurring_transactions: list[Self],
+        scheduled_transactions: list[ScheduledTransaction],
         starting_cents: int = 0,
         t: Optional[date] = None,
         until: Optional[date] = None,
-    ):
+    ) -> list["CumBalanceRow"]:
+        # NOTE: the copy is just to appease the type checker
+        transactions: Sequence[tuple[date, RecurringTransaction | ScheduledTransaction]] = list(
+            cls.get_occurrences(recurring_transactions, t, until)
+        )
+
+        matched_scheduled_transactions = set()
+
+        # if there is a scheduled transaction in the same month as a recurring transaction,
+        # with the same description, replace the recurring transaction with the scheduled transaction
+        # this is to allow for manual adjustments to recurring transactions
+        # (e.g. if the recurring transaction is for a fixed amount, but the actual amount varies)
+        for i, (txn_date, txn) in enumerate(transactions):
+            for scheduled_txn in scheduled_transactions:
+                if (
+                    scheduled_txn.date.year == txn_date.year
+                    and scheduled_txn.date.month == txn_date.month
+                    and scheduled_txn.description == txn.description
+                ):
+                    transactions[i] = (txn_date, scheduled_txn)
+                    matched_scheduled_transactions.add(scheduled_txn)
+                    break
+
+        # add any scheduled transactions that didn't match
+        for scheduled_txn in scheduled_transactions:
+            if scheduled_txn not in matched_scheduled_transactions:
+                transactions.append((scheduled_txn.date, scheduled_txn))
+
+        result = []
+
         total = starting_cents
-        for txn_date, txn in cls.get_occurrences(transactions, t, until):
+        for txn_date, txn in transactions:
             total += txn.cents
-            yield txn_date, total, txn
+            result.append(CumBalanceRow(date=txn_date, transaction=txn, balance_cents=total))
+
+        return result
+
+
+class CumBalanceRow(BaseModel):
+    date: date
+    transaction: RecurringTransaction | ScheduledTransaction
+    balance_cents: int
+
+    @classmethod
+    def tabulate(cls, rows: Sequence[Self]):
+        return tabulate(
+            [
+                (
+                    row.date,
+                    row.transaction.description,
+                    format_money(row.transaction.cents),
+                    format_money(row.balance_cents),
+                )
+                for row in rows
+            ],
+            headers=["Date", "Description", "Change", "Total"],
+            colalign=("left", "left", "right", "right"),
+        )

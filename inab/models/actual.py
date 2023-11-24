@@ -1,12 +1,16 @@
-from datetime import date
+from datetime import date as date_type
+from typing import Optional
 
 from pydantic import BaseModel, Field
 
 
 class ScheduledTransaction(BaseModel):
-    date: date
+    date: date_type
     cents: int
     description: str
+
+    class Config:
+        frozen = True
 
 
 class Actual(BaseModel):
