@@ -1,9 +1,7 @@
 import yaml
-from tabulate import tabulate
 
 from ..models.actual import Actual
 from ..models.recurring import RecurringTransaction, CumBalanceRow
-from ..utils.format_money import format_money
 
 
 def main():
