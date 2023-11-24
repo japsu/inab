@@ -15,15 +15,12 @@ class Freq(Enum):
 
 
 class Recurrence(BaseModel):
-    freq: Freq = Freq.MONTHLY
     bymonthday: Optional[int] = None
     interval: int = 1
     dtstart: Optional[datetime] = None
 
     def get_occurrences(self, t: Optional[date] = None, until: Optional[date] = None):
         from dateutil.rrule import rrule, MONTHLY
-
-        assert self.freq == Freq.MONTHLY
 
         if t is None:
             t = date.today() + timedelta(days=1)
