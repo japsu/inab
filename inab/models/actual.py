@@ -13,5 +13,6 @@ class ScheduledTransaction(BaseModel):
 
 
 class Actual(BaseModel):
+    date: date_type
     account_balance_cents: int
     scheduled_transactions: list[ScheduledTransaction] = Field(default_factory=list)

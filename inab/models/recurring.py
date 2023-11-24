@@ -26,7 +26,7 @@ class Recurrence(BaseModel):
         assert self.freq == Freq.MONTHLY
 
         if t is None:
-            t = date.today()
+            t = date.today() + timedelta(days=1)
 
         if until is None:
             until = t + timedelta(days=120)
@@ -52,13 +52,13 @@ class RecurringTransaction(BaseModel):
 
     @classmethod
     def get_occurrences(
-        cls, transactions: list[Self], t: Optional[date] = None, until: Optional[date] = None
+        cls, transactions: list[Self], start_date: Optional[date] = None, end_date: Optional[date] = None
     ):
         return sorted(
             (
                 (txn_date, txn)
                 for txn in transactions
-                for txn_date in txn.recurrence.get_occurrences(t, until)
+                for txn_date in txn.recurrence.get_occurrences(start_date, end_date)
             ),
             key=lambda x: x[0],
         )
@@ -69,12 +69,12 @@ class RecurringTransaction(BaseModel):
         recurring_transactions: list[Self],
         scheduled_transactions: list[ScheduledTransaction],
         starting_cents: int = 0,
-        t: Optional[date] = None,
-        until: Optional[date] = None,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
     ) -> list["CumBalanceRow"]:
         # NOTE: the copy is just to appease the type checker
         transactions: Sequence[tuple[date, RecurringTransaction | ScheduledTransaction]] = list(
-            cls.get_occurrences(recurring_transactions, t, until)
+            cls.get_occurrences(recurring_transactions, start_date, end_date)
         )
 
         matched_scheduled_transactions = set()
