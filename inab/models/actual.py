@@ -1,10 +1,10 @@
-from datetime import date as date_type
+from datetime import date
 
 from pydantic import BaseModel, Field
 
 
 class ScheduledTransaction(BaseModel):
-    date: date_type
+    date: date
     cents: int
     description: str
 
@@ -13,6 +13,6 @@ class ScheduledTransaction(BaseModel):
 
 
 class Actual(BaseModel):
-    date: date_type
+    date: date
     account_balance_cents: int
     scheduled_transactions: list[ScheduledTransaction] = Field(default_factory=list)
