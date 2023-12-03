@@ -16,17 +16,35 @@ class CumulativeBalance(BaseModel):
     balance_cents: int
 
     @classmethod
-    def tabulate(cls, rows: Sequence[Self]):
-        return tabulate(
-            [
+    def tabulate(
+        cls,
+        rows: Sequence[Self],
+        starting_cents: Optional[int] = None,
+        start_date: Optional[date_type] = None,
+    ):
+        tabular_data = [
+            (
+                row.date.isoformat(),
+                row.transaction.description,
+                format_money(row.transaction.cents),
+                format_money(row.balance_cents),
+            )
+            for row in rows
+        ]
+
+        if starting_cents is not None:
+            tabular_data.insert(
+                0,
                 (
-                    row.date,
-                    row.transaction.description,
-                    format_money(row.transaction.cents),
-                    format_money(row.balance_cents),
-                )
-                for row in rows
-            ],
+                    start_date.isoformat() if start_date is not None else "",
+                    "Starting Balance",
+                    "",
+                    format_money(starting_cents),
+                ),
+            )
+
+        return tabulate(
+            tabular_data,
             headers=["Date", "Description", "Change", "Total"],
             colalign=("left", "left", "right", "right"),
         )
@@ -36,8 +54,8 @@ class CumulativeBalance(BaseModel):
         cls,
         recurring_transactions: list[RecurringTransaction],
         scheduled_transactions: list[ScheduledTransaction],
+        start_date: date_type,
         starting_cents: int = 0,
-        start_date: Optional[date_type] = None,
         end_date: Optional[date_type] = None,
     ) -> list["CumulativeBalance"]:
         # NOTE: the copy is just to appease the type checker
@@ -66,6 +84,9 @@ class CumulativeBalance(BaseModel):
         for scheduled_txn in scheduled_transactions:
             if scheduled_txn not in matched_scheduled_transactions:
                 transactions.append((scheduled_txn.date, scheduled_txn))
+
+        # discard past transactions
+        transactions = [txn for txn in transactions if txn[0] >= start_date]
 
         result = []
 
