@@ -58,7 +58,7 @@ class CumulativeBalance(BaseModel):
                     and scheduled_txn.date.month == txn_date.month
                     and scheduled_txn.description == txn.description
                 ):
-                    transactions[i] = (txn_date, scheduled_txn)
+                    transactions[i] = (scheduled_txn.date, scheduled_txn)
                     matched_scheduled_transactions.add(scheduled_txn)
                     break
 
