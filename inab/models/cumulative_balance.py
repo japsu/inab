@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from tabulate import tabulate
 
 from ..utils.format_money import format_money
+from ..utils.truncate import truncate
 from .actual import ScheduledTransaction
 from .recurring import RecurringTransaction
 
@@ -21,11 +22,16 @@ class CumulativeBalance(BaseModel):
         rows: Sequence[Self],
         starting_cents: Optional[int] = None,
         start_date: Optional[date_type] = None,
+        description_max_width: Optional[int] = 19,  # fits in a terminal that is 1/3 of my screen :)
     ):
         tabular_data = [
             (
                 row.date.isoformat(),
-                row.transaction.description,
+                (
+                    row.transaction.description
+                    if description_max_width is None
+                    else truncate(row.transaction.description, description_max_width)
+                ),
                 format_money(row.transaction.cents),
                 format_money(row.balance_cents),
             )
@@ -87,6 +93,9 @@ class CumulativeBalance(BaseModel):
 
         # discard past transactions
         transactions = [txn for txn in transactions if txn[0] >= start_date]
+
+        # japsu may be dummy thicc and not always put actual transactions in order
+        transactions.sort(key=lambda txn: txn[0])
 
         result = []
 

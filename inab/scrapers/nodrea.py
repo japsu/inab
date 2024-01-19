@@ -1,8 +1,14 @@
+"""
+Parses the clipboard output of browser-console-scripts/nordea-credit-scrape.js pasted into the browser console.
+"""
+
 import re
+import json
 from datetime import date, datetime
 from enum import Enum
+from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class TransactionType(str, Enum):
@@ -12,55 +18,66 @@ class TransactionType(str, Enum):
     UNKNOWN = "Tuntematon"
 
 
-class State(str, Enum):
-    DATE_OR_DESCRIPTION = r"^((?P<date>\d{1,2}\.\d{1,2}\.\d{4})|(?P<type>Osto|Suoritus|Hyvitys) (?P<description>.+))$"
+# note the minus here is a funky Unicode character, not - or –
+SUM_REGEX = re.compile(r"^(?P<minus>−)?(?P<euros>\d+),(?P<cents>\d{2})$", re.UNICODE)
 
-    # note the minus here is a funky Unicode character, not - or –
-    SUM = r"^(?P<minus>−)?(?P<euros>\d+),(?P<cents>\d{2})$"
+
+class CreditCardTransactionFromBrowserScript(BaseModel):
+    date_fi: str = Field(alias="date")
+    title: str
+    amount: str
+
+    class Config:
+        frozen = True
+        by_alias = True
+
+    @property
+    def date(self):
+        return datetime.strptime(self.date_fi, "%d.%m.%Y").date()
+
+    @property
+    def cents(self):
+        match = SUM_REGEX.match(self.amount)
+        if not match:
+            raise ValueError(f"Could not parse amount: {self.amount}")
+
+        cents = 100 * int(match.group("euros")) + int(match.group("cents"))
+        if match.group("minus"):
+            cents = -cents
+
+        return cents
+
+    @property
+    def type(self):
+        type_fi, _ = self.title.split(" ", 1)
+        return TransactionType(type_fi) if type_fi in TransactionType.__members__ else TransactionType.UNKNOWN
+
+    @property
+    def description(self):
+        try:
+            _, description = self.title.split(" ", 1)
+            return description
+        except ValueError:
+            return self.title
 
 
 class CreditCardTransaction(BaseModel):
-    type: TransactionType
     date: date
     description: str
     cents: int
 
     @classmethod
-    def from_nodrea(cls, lines):
-        state = State.DATE_OR_DESCRIPTION
-        date_ = date(1970, 1, 1)
-        type = TransactionType.UNKNOWN
-        description = ""
-
-        for line in lines:
-            if match := re.match(state.value, line, re.UNICODE):
-                match state:
-                    case State.DATE_OR_DESCRIPTION:
-                        if date_str := match.group("date"):
-                            # there may be 1 to 3 dates, the last of which is the interesting one
-                            date_ = datetime.strptime(date_str, "%d.%m.%Y").date()
-                        elif type_str := match.group("type"):
-                            type = TransactionType(type_str)
-                            description = match.group("description")
-                            state = State.SUM
-
-                    case State.SUM:
-                        cents = 100 * int(match.group("euros")) + int(match.group("cents"))
-                        if match.group("minus"):
-                            cents = -cents
-
-                        yield cls(type=type, date=date_, description=description, cents=cents)
-
-                        state = State.DATE_OR_DESCRIPTION
-                        date_ = date(1970, 1, 1)
-                        type = TransactionType.UNKNOWN
-                        description = ""
-
-                    case _:
-                        raise NotImplementedError(state)
+    def from_browser_script(cls, data: list[dict[str, Any]]):
+        for txn in data:
+            validated = CreditCardTransactionFromBrowserScript.model_validate(txn)
+            yield cls(
+                date=validated.date,
+                description=validated.description,
+                cents=validated.cents,
+            )
 
 
 if __name__ == "__main__":
-    with open("examples/credit_card_copypasta.txt", encoding="UTF-8") as input_file:
-        for txn in CreditCardTransaction.from_nodrea(input_file.readlines()):
+    with open("data/credit_card_scrape.json", encoding="UTF-8") as input_file:
+        for txn in CreditCardTransaction.from_browser_script(json.load(input_file)):
             print(txn)
